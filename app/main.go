@@ -16,6 +16,7 @@ func main() {
 	}
 
 	verificationToken := os.Getenv("META_VERIFY_TOKEN")
+
 	if verificationToken == "" {
 		panic("META_VERIFY_TOKEN not set in .env file")
 	}
@@ -32,7 +33,7 @@ func main() {
 		token := context.Query("hub.verify_token")
 		challenge := context.Query("hub.challenge")
 
-		if mode == "subscribe" && token == "my_verify_token" {
+		if mode == "subscribe" && token == verificationToken {
 			context.String(http.StatusOK, challenge)
 		} else {
 			context.JSON(http.StatusForbidden, "Verification failed")
