@@ -1,6 +1,10 @@
 package main
 
 import (
+	"eazyticket/eazyticket"
+	"encoding/json"
+	"io"
+	"log"
 	"net/http"
 	"os"
 
@@ -15,11 +19,7 @@ func main() {
 		panic("Error loading .env file")
 	}
 
-	verificationToken := os.Getenv("META_VERIFY_TOKEN")
-
-	if verificationToken == "" {
-		panic("META_VERIFY_TOKEN not set in .env file")
-	}
+	eazyticket.Setup()
 
 	router := gin.Default()
 
@@ -27,27 +27,61 @@ func main() {
 		context.JSON(http.StatusOK, gin.H{"message": "Welcome to eazy ticket!"})
 	})
 
-	router.GET("/eazyticket", func(context *gin.Context) {
+	router.GET("/message", func(context *gin.Context) {
 
 		mode := context.Query("hub.mode")
 		token := context.Query("hub.verify_token")
 		challenge := context.Query("hub.challenge")
 
-		if mode == "subscribe" && token == verificationToken {
+		if mode == "subscribe" && token == os.Getenv("WHATSAPP_VERIFICATION_TOKEN") {
 			context.String(http.StatusOK, challenge)
 		} else {
-			context.JSON(http.StatusForbidden, "Verification failed")
+			context.JSON(http.StatusForbidden, "VERIFICATION_FAILED")
 		}
-	})
-
-	router.POST("/eazyticket", func(context *gin.Context) {
-
-		// TODO: Read incoming webhook data and process it using flow library
-
-		context.JSON(http.StatusOK, "EVENT_RECEIVED")
 
 	})
 
-	router.Run(":9000")
+	router.POST("/message", func(context *gin.Context) {
+
+		defer context.Request.Body.Close()
+
+		event, err := io.ReadAll(context.Request.Body)
+
+		if err != nil {
+
+			log.Println("Error reading request body:", err)
+			context.JSON(http.StatusInternalServerError, "INTERNAL_SERVER_ERROR")
+
+			return
+		}
+
+		message, err := eazyticket.ParseEvent(string(event))
+
+		if err != nil {
+
+			log.Println("Error parsing event as message:", err)
+			context.JSON(http.StatusInternalServerError, "INTERNAL_SERVER_ERROR")
+
+			return
+		}
+
+		debug, _ := json.Marshal(message)
+
+		log.Println("Received message:", string(debug))
+
+		err = eazyticket.WelcomeUser(*message)
+
+		if err != nil {
+
+			log.Println("Error sending welcome message:", err)
+			context.JSON(http.StatusInternalServerError, "INTERNAL_SERVER_ERROR")
+
+		}
+
+		context.JSON(http.StatusOK, "EVENT_PROCESSED")
+
+	})
+
+	router.Run(":9090")
 
 }
